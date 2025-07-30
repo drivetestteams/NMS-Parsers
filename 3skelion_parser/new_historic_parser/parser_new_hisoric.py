@@ -297,7 +297,7 @@ def parse_dataframe_for_importing(df):
 
 # ----------- MAIN ------------------------
 # creates the engine on the specified path
-params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};SERVER=swissqual-srv;DATABASE=3skelion2;UID=sa;PWD=swissqual")
+params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};SERVER=win-45ntjeb05tt\sqlexpress;DATABASE=3skelion;UID=admin;PWD=fasmetrics")
 engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
 
 # traverse all the files in the subdirecories

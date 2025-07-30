@@ -17,7 +17,7 @@ def is_valid_date(d):
 
 print("\n\n===RUNNING: 4SKELION LIVE PARSER ")
 
-csv_path = "C:\Program Files (x86)\Telemetry Standalone\Telemetry.csv"
+csv_path = "C:\\Program Files (x86)\\APP TELEMETRY\\Telemetry.csv"
 dateparse = lambda x: [datetime.strptime(d, '%m/%d/%Y').date() for d in x]
 df = pd.read_csv(csv_path, delimiter='$', parse_dates=['DATE'])
 try:
@@ -184,7 +184,7 @@ alarm_df.to_csv("3SKELION+_ALARMS.csv", sep='$', encoding='utf-8', index=False, 
 # ----------------------------------------------------------------------------------------------------------------------------
 
 # Insert Data with correct types into SQL Database
-params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};SERVER=swissqual-srv;DATABASE=3skelion2;UID=sa;PWD=swissqual")
+params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};SERVER=win-45ntjeb05tt\sqlexpress;DATABASE=3skelion;UID=admin;PWD=fasmetrics")
 engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
 df.to_sql('LiveSheet$', con=engine, if_exists='replace', index=False, dtype={
                                                                             'SERIAL': NVARCHAR,
