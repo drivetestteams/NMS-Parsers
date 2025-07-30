@@ -56,10 +56,8 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
         self.create_widgets()
         
        # Schedule the worker threads to run after 5 minutes (300,000 milliseconds)
-        self.root.after(300000, self.run_script_in_thread, Triskelion_Live_Parser_path)
         self.root.after(300000 + 200, self.run_script_in_thread, FourSkelion_Historic_path)
         self.root.after(300000 + 400, self.run_script_in_thread, FourSkelion_Live_path)
-        self.root.after(300000 + 150000, self.run_script_in_thread, TriSkelion_Parser_path) # Run the old historic parser after 5 minutes
         self.root.after(300000 + 9800, self.run_script_in_thread, "Restart_telemetry")
         
         # Schedule program restart every 4 hours (4 * 60 * 60 * 1000 milliseconds)
