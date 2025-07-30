@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3skelion App</title>
+  <link rel="icon" type="image/x-icon" href="./images/FASMETRICS_LOGONLY.ico">
+  <style>
+    body {
+      background-color:rgb(229, 229, 229);
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    iframe {
+      border: none;
+      width: calc(100% + 2%);
+      height: calc(100% + 4%); /* Adjust height to exclude the bottom bar */
+    }
+  </style>
+</head>
+<body>
+  <iframe src="http://192.168.10.134/Reports/powerbi/3skelion?rs:embed=true"></iframe>
+</body>
+</html>
