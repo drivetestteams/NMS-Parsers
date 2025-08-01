@@ -8,6 +8,12 @@ import pytz
 from tzlocal import get_localzone
 import shutil
 
+def nullify_snr_if_rsrp_missing(df, rsrp_col, snr_col):
+    if rsrp_col in df.columns and snr_col in df.columns:
+        df.loc[df[rsrp_col] == -150, rsrp_col] = pd.NA
+        df.loc[df[rsrp_col].isna(), snr_col] = pd.NA
+
+
 def csv_to_database(csv_path, engine):
     # reads the csv file on the specified path of the arguement if error continues to the next
     df = pd.read_csv(csv_path, delimiter='$', parse_dates=['DATE'])
@@ -266,20 +272,11 @@ def parse_dataframe_for_importing(df):
         df['TIME'] = local_time_without_tz.apply(lambda x: x.time())   # Extract Time
         
         # replace all values of BEST_SNR == -16.00 with NULL
-        df['BESTS.RSRP'].replace(-150, pd.NA, inplace=True)
-        # Replace 'BEST.SNR' if 'BESTS.RSRP' is null
-        df.loc[df['BESTS.RSRP'].isna(), 'BESTS.SNR'] = pd.NA
-        df['S0.RSRP'].replace(-150, pd.NA, inplace=True)
-        df.loc[df['S0.RSRP'].isna(), 'SECT0.SNR'] = pd.NA
-        df['S1.RSRP'].replace(-150, pd.NA, inplace=True)
-        df.loc[df['S1.RSRP'].isna(), 'SECT1.SNR'] = pd.NA
-        df['S2.RSRP'].replace(-150, pd.NA, inplace=True)
-        df.loc[df['S2.RSRP'].isna(), 'SECT2.SNR'] = pd.NA
-        # Check if the column exists
-        column_name = 'S3.RSRP'
-        if column_name in df.columns:
-            df['S3.RSRP'].replace(-150, pd.NA, inplace=True)
-            df.loc[df['S3.RSRP'].isna(), 'SECT3.SNR'] = pd.NA
+        nullify_snr_if_rsrp_missing(df, 'S0.RSRP', 'SECT0.SNR')
+        nullify_snr_if_rsrp_missing(df, 'S1.RSRP', 'SECT1.SNR')
+        nullify_snr_if_rsrp_missing(df, 'S2.RSRP', 'SECT2.SNR')
+        nullify_snr_if_rsrp_missing(df, 'S3.RSRP', 'SECT3.SNR')
+        nullify_snr_if_rsrp_missing(df, 'BESTS.RSRP', 'BESTS.SNR')
             
         # Extract the last two characters, append '0x' to each, then convert to decimal
         hex_sec = '0x' + df['BESTS.CID'].str[-2:]
