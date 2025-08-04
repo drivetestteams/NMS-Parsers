@@ -1,10 +1,16 @@
 # The new historic parser - parser_new_hisoric.py
 # RESUME
 This pyhton scripts collects, parses/tramsforms and inserts data into the NMS database. It runs inside the C:/TRISKELION_LOG_DATA/ folder, processing all its subfolders containing csv files with measurement data from systems. After successfully inserting data into the DB, the csv files are moved to C:/TRISKELION_LOG_DATA/IMPORTED folder. In case of failure, they are moved to C:/TRISKELION_LOG_DATA/PROBLEMATIC.
+After the main process is executed, a csv file is exported. This contains all historic measurements from all systems that are located inside the NMS DB for the past 15 days.
 
 Every process included in this file is logged and exported into equivalent logfiles.
 
 ================================ FUNCTIONS ================================
+
+# def full_historic_export()
+
+This function executes a simple "SELECT *" query for the database table containing all historical logs from all systems for the past 15 days.
+After successfull execution, the output is written into : NMS_FULL_HISTORIC_VIEW.csv.
 
 # def csv_to_database(csv_path, engine)
 
@@ -35,3 +41,4 @@ After creating the engine for the SQL insertion, it traverses all subdirectories
 Skips folders: IMPORTED, PROBLEMATIC and FASMETRICS, and starts looking only inside the OPERATORS folders and system subfolders.
 Whenever it finds a csv file, it calls the csv_to_database(path,engine) to insert the file under examination into the db.
 If the file is inserted succesfully, it is moved to the IMPORTED folder, otherwise it is moved to the PROBLEMATIC folder.
+Finally, after all files are processed, the function full_historic_export() is called and executes the historic export process.

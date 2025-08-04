@@ -22,8 +22,9 @@ Removes Serials starting with specific test/development prefixes like: FAS, PG, 
 Next is the Date/Time validation using the is_valid_date() function. In case of a not valid date value, a transformation is executed to achieve equal form of dates inside the Database.
 Invalid radio KPI values (RSRP, SINR) are replaced with NULL.
 Also, a new column is created [SECTORID] using values from existing one [BESTS.CID].
-Last process to be done - before the db insertion - is the alarm export.
-For this purpose, a new column is created to calculate the time difference between the parsing time and the last given measurement info from each system.
+Last process to be done - before the db insertion - is the alarm and liveview export.
+All previously filtered and parsed columns of the dataframe are exported into NMS_LIVEVIEW.csv.
+For the alarm export, a new column is created to calculate the time difference between the parsing time and the last given measurement info from each system.
 Times are transformed from UTC to NTP time through get_localzone(), which gains the time zone from the machine running the whole process.
 A series of new columns are created to signal the existence of alarms. These columns are:
 - COMM. ALARM -> 0 if last measurement info is within 12 hours, 1 otherwise.
@@ -31,7 +32,7 @@ A series of new columns are created to signal the existence of alarms. These col
 - RSRP ALARM -> 0 if last measurement info doesn't come with an RSRP Alarm (RSRP value lower than given threshold, default is -120dBm), 1 otherwise.
 - SINR ALARM -> 0 if last measurement info doesn't come with an SINR Alarm (SINR value lower than given threshold, default is 0dB), 1 otherwise.
 - TEMP ALARM -> 0 if last measurement info doesn't come with a Temperature Alarm (Temperature value higher than 75 degrees celsius), 1 otherwise.
-All these columns along with equivalent KPIs and information is inserted into a new dataframe and written into 3SKELION+_ALARMS.csv.
+All these columns along with equivalent KPIs and information is inserted into a new dataframe and written into NMS_ALARMS.csv.
 
 At the end, we have the db insertion where an engine is created with the following configuration:
 mssql+pyodbc:///?odbc_connect=DRIVER={SQL Server Native Client 11.0};SERVER=SERVER NAME;DATABASE=DB NAME;UID=USERNAME;PWD=PASSWORD
