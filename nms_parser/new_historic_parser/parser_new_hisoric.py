@@ -307,7 +307,7 @@ def full_historic_export():
     try:
         with pyodbc.connect(conn_str) as conn:
             df = pd.read_sql_query(f'SELECT * FROM {table}', conn)
-            df.to_csv('NMS_FULL_HISTORIC_VIEW.csv', index=False)
+            df.to_csv("C:\\inetpub\\wwwroot\\Platform\\NMS_FULL_HISTORIC_VIEW.csv", index=False)
             print("Data written to output.csv")
 
     except Exception as e:
