@@ -33,7 +33,7 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
     
     def __init__(self, root):
         self.root = root
-        self.root.title("3skelion - 4skelion NMS Files Parser")
+        self.root.title("NMS Files Parser")
 
         # Set the window icon
         self.set_icon("../assets/FASMETRICS_LOGONLY.ico")
