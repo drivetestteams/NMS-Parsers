@@ -193,7 +193,7 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
         # Script 3 Section
         frame3 = ttk.Frame(self.root, padding="20")
         frame3.grid(row=0, column=2, padx=20, pady=20)
-        label3 = ttk.Label(frame3, text="4skelion Historic Data Parser", style="TLabel")
+        label3 = ttk.Label(frame3, text="Gen4 Historic Data Parser", style="TLabel")
         label3.pack()
         button3 = ttk.Button(frame3, text="Run Now", command=lambda: self.run_script_in_thread(FourSkelion_Historic_path), style="Large.TButton")
         button3.pack()
@@ -207,7 +207,7 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
         # Script 4 Section
         frame4 = ttk.Frame(self.root, padding="20")
         frame4.grid(row=0, column=3, padx=20, pady=20)
-        label4 = ttk.Label(frame4, text="4skelion Live Data Parser", style="TLabel")
+        label4 = ttk.Label(frame4, text="Gen4 Live Data Parser", style="TLabel")
         label4.pack()
         button4 = ttk.Button(frame4, text="Run Now", command=lambda: self.run_script_in_thread(FourSkelion_Live_path), style="Large.TButton")
         button4.pack()
