@@ -180,12 +180,13 @@ df = df.drop(columns=['time_diff'])
 print(df.iloc[:, :8])
 print("\n======================================ALARMS======================================\n")
 print(alarm_df.iloc[:, :])
-alarm_df.to_csv("3SKELION+_ALARMS.csv", sep='$', encoding='utf-8', index=False, header=True)
+alarm_df.to_csv("NMS_ALARMS.csv", sep='$', encoding='utf-8', index=False, header=True)
 # ----------------------------------------------------------------------------------------------------------------------------
 
 # Insert Data with correct types into SQL Database
 params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};SERVER=win-45ntjeb05tt\sqlexpress;DATABASE=3skelion;UID=admin;PWD=fasmetrics")
 engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
+df.to_csv("NMS_LIVEVIEW.csv", sep='$', encoding='utf-8', index=False, header=True)
 df.to_sql('LiveSheet$', con=engine, if_exists='replace', index=False, dtype={
                                                                             'SERIAL': NVARCHAR,
                                                                             'NAME': NVARCHAR,

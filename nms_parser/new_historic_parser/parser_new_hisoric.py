@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.types import Float, DateTime, NVARCHAR, Date, Time
 import urllib
 from datetime import datetime
-import pytz
+import pytz, pyodbc
 from tzlocal import get_localzone
 import shutil
 
@@ -289,10 +289,32 @@ def parse_dataframe_for_importing(df):
 
     except Exception as e:
         print(f"Error processing DataFrame: {e}")
-        return pd.DataFrame()                       # returns empty Dataframe
+        return pd.DataFrame()                       # returns empty Datafr
+
+def full_historic_export():
+
+    # Connection parameters
+    server = 'win-45ntjeb05tt\sqlexpress'  # e.g., 'localhost' or '192.168.1.100\SQLEXPRESS' *** WHEN SERVER IS HOSTED EXTERNALLY, REPLACE SERVER NAME WITH IP ADDRESS ***
+    database = '3skelion'
+    username = 'admin'
+    password = 'fasmetrics'
+    table = 'HistoricLast15Days'
+
+    # Create connection string
+    conn_str = f'DRIVER={{SQL Server Native Client 11.0}};SERVER={server};DATABASE={database};UID={username};PWD={password}'
+
+    # Connect and run query
+    try:
+        with pyodbc.connect(conn_str) as conn:
+            df = pd.read_sql_query(f'SELECT * FROM {table}', conn)
+            df.to_csv('NMS_FULL_HISTORIC_VIEW.csv', index=False)
+            print("Data written to output.csv")
+
+    except Exception as e:
+        print("Error:", e)
 
 
-# ----------- MAIN ------------------------
+# ------------------------ MAIN ------------------------
 # creates the engine on the specified path
 params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};SERVER=win-45ntjeb05tt\sqlexpress;DATABASE=3skelion;UID=admin;PWD=fasmetrics")
 engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
@@ -327,3 +349,4 @@ for root, dirs, files in os.walk("C:/TRISKELION_LOG_DATA/", topdown=False):
                 move = "C:/TRISKELION_LOG_DATA/PROBLEMATIC/" + name
                 shutil.move(path, move)
                 continue
+full_historic_export()
