@@ -226,7 +226,7 @@ def parse_dataframe_for_importing(df):
             indices = df.index[df['LATITUDE'] == 0.0].tolist()
             for index in indices:
                 current_time = datetime.now(pytz.utc)
-                formatted_time = current_time.strftime("%d-%m-%Y %H:%M:%S")
+                formatted_time = current_time.strftime("%m-%d-%Y %H:%M:%S")
                 date_component, time_component = formatted_time.split()
                 df.at[index, 'DATE'] = date_component
                 df.at[index, 'TIME'] = time_component
@@ -291,6 +291,7 @@ def parse_dataframe_for_importing(df):
         print(f"Error processing DataFrame: {e}")
         return pd.DataFrame()                       # returns empty Datafr
 
+
 def full_historic_export():
 
     # Connection parameters
@@ -306,7 +307,7 @@ def full_historic_export():
     # Connect and run query
     try:
         with pyodbc.connect(conn_str) as conn:
-            df = pd.read_sql_query(f'SELECT * FROM {table}', conn)
+            df = pd.read_sql_query(f'SELECT [SERIAL],[NAME],[DATE],[TIME],[LATITUDE],[LONGITUDE],[BESTS.SECT#],[BESTS.EARFCN],[BESTS.CID_dec],[BESTS.PCI],[BESTS.RSRP],[BESTS.RSRQ],[BESTS.SNR],[S0.EARFCN],[S0.CID_dec],[S0.PCI],[S0.RSRP],[S0.RSRQ],[SECT0.SNR],[S1.EARFCN],[S1.CID_dec],[S1.PCI],[S1.RSRP],[S1.RSRQ],[SECT1.SNR],[S2.EARFCN],[S2.CID_dec],[S2.PCI],[S2.RSRP],[S2.RSRQ],[SECT2.SNR],[S3.EARFCN],[S3.CID_dec],[S3.PCI],[S3.RSRP],[S3.RSRQ],[SECT3.SNR],[BESTS.TEMP.] FROM {table}', conn)
             df.to_csv("C:\\inetpub\\wwwroot\\Platform\\NMS_FULL_HISTORIC_VIEW.csv", index=False)
             print("Data written to output.csv")
 

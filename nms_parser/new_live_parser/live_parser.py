@@ -184,9 +184,11 @@ alarm_df.to_csv("C:\\inetpub\\wwwroot\\Platform\\NMS_ALARMS.csv", sep='$', encod
 # ----------------------------------------------------------------------------------------------------------------------------
 
 # Insert Data with correct types into SQL Database
+columns_live_to_keep = ['SERIAL','NAME','LATITUDE','LONGITUDE','HEADING','SPEED','DATE','TIME','SCAN#','S0.SECT#','S0.MCC','S0.MNC','S0.ISREG.','S0.EARFCN','S0.BAND','S0.CID','S0.NODEB_dec','S0.CID_dec','S0.TAC','S0.PCI','S0.RSRP','S0.RSRQ','SECT0.SNR','S1.SECT#','S1.MCC','S1.MNC','S1.ISREG.','S1.EARFCN','S1.BAND','S1.CID','S1.NODEB_dec','S1.CID_dec','S1.TAC','S1.PCI','S1.RSRP','S1.RSRQ','SECT1.SNR','S2.SECT#','S2.MCC','S2.MNC','S2.ISREG.','S2.EARFCN','S2.BAND','S2.CID','S2.NODEB_dec','S2.CID_dec','S2.TAC','S2.PCI','S2.RSRP','S2.RSRQ','SECT2.SNR','S3.SECT#','S3.MCC','S3.MNC','S3.ISREG.','S3.EARFCN','S3.BAND','S3.CID','S3.NODEB_dec','S3.CID_dec','S3.TAC','S3.PCI','S3.RSRP','S3.RSRQ','SECT3.SNR']
 params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};SERVER=win-45ntjeb05tt\sqlexpress;DATABASE=3skelion;UID=admin;PWD=fasmetrics")
 engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
-df.to_csv("C:\\inetpub\\wwwroot\\Platform\\NMS_LIVEVIEW.csv", sep='$', encoding='utf-8', index=False, header=True)
+export_df=df[columns_live_to_keep]
+export_df.to_csv("C:\\inetpub\\wwwroot\\Platform\\NMS_LIVEVIEW.csv", sep='$', encoding='utf-8', index=False, header=True)
 df.to_sql('LiveSheet$', con=engine, if_exists='replace', index=False, dtype={
                                                                             'SERIAL': NVARCHAR,
                                                                             'NAME': NVARCHAR,

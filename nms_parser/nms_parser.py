@@ -26,7 +26,7 @@ FourSkelion_Live_path = "./new_live_parser/live_parser"  # Path to the new live 
 
 Telemetry_path = "C:\\Program Files (x86)\\APP TELEMETRY\\Telemetry_Standalone.exe"        # Path to the Telemetry Client executable
 
-Auto_sync_path = "C:\\Users\\Administrator\\Desktop\\APP FTP AUTO SYNCH\\APP FTP AUTO SYNCH\\FTP_AutoSynch.exe"    # Path to the Auto Sync executable
+Auto_sync_path = "C:\\Program Files (x86)\\FTP_SYNCH_APP\\FTP_AutoSynch.exe"   # Path to the Auto Sync executable
 
 # This is the main application class that initializes the GUI and manages the scheduling of scripts
 class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these functions. 
