@@ -176,6 +176,14 @@ else:
     print("No Alarms Detected")
     
 alarm_df = alarm_df[columns_to_keep]
+alarm_df = alarm_df[alarm_df['SERIAL'].isin([
+    '4GN00100', '4GN00101', '4GN00102', '4GN00103', '4GN00104', '4GN00105',
+    '4GN00106', '4GN00107', '4GN00108', '4GN00109', '4GN00110',
+    '4GV00101', '4GV00103', '4GV00104', '4GV00106', '4GV00107', '4GV00108',
+    '4GV00110', '4GV00111', '4GV00112', '4GV00113', '4GV00114', '4GV00115',
+    '4GV00116', '4GV00117', '4GV00118',
+    '4GW00800', '4GW00802', '4GW00805'
+])]
 df = df.drop(columns=['time_diff'])
 print(df.iloc[:, :8])
 print("\n======================================ALARMS======================================\n")
@@ -188,6 +196,14 @@ columns_live_to_keep = ['SERIAL','NAME','LATITUDE','LONGITUDE','HEADING','SPEED'
 params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};SERVER=win-45ntjeb05tt\sqlexpress;DATABASE=3skelion;UID=admin;PWD=fasmetrics")
 engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
 export_df=df[columns_live_to_keep]
+export_df = export_df[export_df['SERIAL'].isin([
+    '4GN00100', '4GN00101', '4GN00102', '4GN00103', '4GN00104', '4GN00105',
+    '4GN00106', '4GN00107', '4GN00108', '4GN00109', '4GN00110',
+    '4GV00101', '4GV00103', '4GV00104', '4GV00106', '4GV00107', '4GV00108',
+    '4GV00110', '4GV00111', '4GV00112', '4GV00113', '4GV00114', '4GV00115',
+    '4GV00116', '4GV00117', '4GV00118',
+    '4GW00800', '4GW00802', '4GW00805'
+])]
 export_df.to_csv("C:\\inetpub\\wwwroot\\Platform\\NMS_LIVEVIEW.csv", sep='$', encoding='utf-8', index=False, header=True)
 df.to_sql('LiveSheet$', con=engine, if_exists='replace', index=False, dtype={
                                                                             'SERIAL': NVARCHAR,
