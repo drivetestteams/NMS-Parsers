@@ -64,12 +64,12 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
         self.root.after(4 * 60 * 60 * 1000, self.restart_program)
 
     # This function monitors the thread and kills the program if it exceeds the timeout    
-    def kill_self_after_timeout(thread, timeout=90000): # 90 seconds typically
+    def kill_self_after_timeout(self, thread, timeout=90000): # 90 seconds typically
         def monitor():
             time.sleep(timeout)
             if thread.is_alive():
                 print(f"[Watchdog] Thread '{thread.name}' still alive after {timeout} sec. Exiting...")
-                os.exit(1)
+                sys.exit(1)
             threading.Thread(target=monitor, daemon=True).start()
             
     # This function restarts the program by terminating all subprocesses and launching a new instance of the script
@@ -233,7 +233,7 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
             # Create a thread for running the script
             thread = threading.Thread(target=self.run_script, args=(script_name,))
             thread.start()
-            self.kill_self_after_timeout(self.thread, timeout=90000)    # 90 seconds typical timeout for each thread running the script
+            self.kill_self_after_timeout(thread, timeout=90000)    # 90 seconds typical timeout for each thread running the script
         except Exception as e:
             print(f"Error starting thread for {script_name}: {e}")
     

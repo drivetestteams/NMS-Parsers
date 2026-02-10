@@ -38,12 +38,10 @@ df = df[df['SERIAL'].str.len() == 8]
 
 
 ###################################################__CODE_FOR_REFRESH_PREV_WITH_LAST_VALID__#####################################################################
-def refresh_prev_with_last_valid(df, copy_datetime_on_scan_change=True):
-    """
-    Update prev1.csv using current telemetry (df).
-    If copy_datetime_on_scan_change is True, when a SERIAL exists in prev but SCAN# differs,
-    copy the current SCAN#, DATETIME (and DATE/TIME text) from telemetry into prev.
-    """
+import pandas as pd
+import numpy as np
+
+def refresh_prev_with_last_valid(df):
     csv_path1 = r"C:\\Program Files (x86)\\APP TELEMETRY\\prev_csv\\prev.csv"
 
     # --- Load prev and minimal cleanup ---
@@ -67,7 +65,6 @@ def refresh_prev_with_last_valid(df, copy_datetime_on_scan_change=True):
     df.columns = df.columns.str.strip()
     df["SERIAL"] = df["SERIAL"].astype(str).str.strip()
     df["SCAN#"] = pd.to_numeric(df["SCAN#"], errors="coerce")
-    # print(df["DATE"])
 
     # Ensure df has DATETIME (build it if missing and DATE/TIME exist)
     if "DATETIME" not in df.columns:
@@ -82,36 +79,18 @@ def refresh_prev_with_last_valid(df, copy_datetime_on_scan_change=True):
     # If df has multiple rows per SERIAL, keep the last one
     df_last = df.drop_duplicates(subset=["SERIAL"], keep="last")
 
-    # --- Build lookup: SERIAL -> (scan_cur, dt_cur) from current telemetry ---
-    lookup = {row["SERIAL"]: (row["SCAN#"], row["DATE"], row["TIME"], row["LATITUDE"], row["LONGITUDE"]) for _, row in df_last.iterrows()}
+    # --- Update existing rows' DATETIME when SCAN# differs and is not 0/NaN ---
+    # Simple lookup: SERIAL -> (scan_cur, dt_cur)
+    lookup = {row["SERIAL"]: (row["SCAN#"], row["DATETIME"]) for _, row in df_last.iterrows()}
 
-    # --- For each row in prev: if same SERIAL exists but SCAN# differs, copy SCAN# and DATETIME (and DATE/TIME) ---
     for i in range(len(df_prev)):
         serial = df_prev.at[i, "SERIAL"]
         prev_scan = df_prev.at[i, "SCAN#"]
         if serial in lookup:
-            scan_cur, dt_cur ,tm_cur, lat_cur, lon_cur = lookup[serial]
+            scan_cur, dt_cur = lookup[serial]
+            if pd.notna(scan_cur) and scan_cur != 0 and scan_cur != prev_scan:
+                df_prev.at[i, "DATETIME"] = dt_cur
 
-            # Only update when we have a meaningful current scan and it's different from prev
-            if pd.notna(scan_cur) and scan_cur != 0 and (pd.isna(prev_scan) or scan_cur != prev_scan):
-                # copy scan
-                df_prev.at[i, "SCAN#"] = scan_cur
-                # print(f"Updated SERIAL {serial}: SCAN# {prev_scan} -> {scan_cur}")
-                # copy DATETIME and DATE/TIME textual columns from telemetry if option enabled
-           
-                if not (lat_cur == 0 and lon_cur == 0):
-                    df_prev.at[i, "DATE"] = dt_cur
-                    df_prev.at[i, "TIME"] = tm_cur
-                    # print(f"Updated SERIAL {serial}: DATE/TIME to {dt_cur} {tm_cur}")
-                else :
-                    current_datetime_utc = datetime.now(pytz.utc)
-                    formatted_time = current_datetime_utc.strftime("%m/%d/%Y %H:%M:%S")
-                    date_component, time_component = formatted_time.split()
-                    df_prev.at[i, "DATE"] = date_component
-                    df_prev.at[i, "TIME"] = time_component
-                    # print(f"Updated SERIAL {serial}: DATE/TIME to current {date_component} {time_component}")
-            
-                   
     # --- Append brand-new SERIALs from df to the end of prev.csv ---
     prev_serials = set(df_prev["SERIAL"])
     df_last = df_last[df_last["SERIAL"].notna()]
@@ -156,8 +135,6 @@ def refresh_prev_with_last_valid(df, copy_datetime_on_scan_change=True):
 
     return df_prev, serial_scan_df
 
-
-# call with default behavior (copy DATETIME when scan changes)
 df_prev, serial_scan_df = refresh_prev_with_last_valid(df)
 
 
