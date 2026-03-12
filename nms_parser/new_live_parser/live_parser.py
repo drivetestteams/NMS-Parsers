@@ -6,6 +6,17 @@ from sqlalchemy.types import Float, DateTime, NVARCHAR, Date, Time
 import urllib
 from datetime import datetime, timedelta
 from ast import literal_eval
+#from serials_config import serials_to_write
+
+serials_to_write = ['4GW00800','4GV00110','4GV00107',
+    '4GN00106','4GV00103','4GV00105','4GV00106','4GV00101','4GV00104','4GN00105','4GN00102',
+    '4GN00101','4GN00100','4GN00107','4GN00104','4GN00103','4GV00108','4GV00111','4GV00112','4GV00114',
+    '4GW00802','4GV00113','4GW00805','4GV00115','4GN00108','4GN00110','4GN00109','4GV00116','4GV00117','4GV00118',
+    '4GV00120','4GV00121','4GN00112','4GN00111'
+]
+#4GN00113 -> ANDROS KING -> THELEI SWSTO ONOMA
+#4GV00119 -> MARI DI LE VANTE -> LATHOS ONOMA
+#4GV00122 -> DEN EXOUME IDEA
 
 
 def is_valid_date(d):
@@ -17,7 +28,7 @@ def is_valid_date(d):
 
 print("\n\n===RUNNING: 4SKELION LIVE PARSER ")
 
-csv_path = "C:\\Program Files (x86)\\APP TELEMETRY\\Telemetry.csv"
+csv_path = "C:\\Program Files (x86)\\FasmetricsSoftware\\APP TELEMETRY CLIENT SERVICE\\Telemetry.csv"
 dateparse = lambda x: [datetime.strptime(d, '%m/%d/%Y').date() for d in x]
 df = pd.read_csv(csv_path, delimiter='$', parse_dates=['DATE'])
 try:
@@ -129,18 +140,18 @@ def refresh_prev_with_last_valid(df, copy_datetime_on_scan_change=True):
             if "DATETIME" in df_new.columns:
                 df_new["DATE"] = df_new["DATETIME"].dt.strftime("%m/%d/%Y")
             else:
-                df_new["DATE"] = np.nan
+                df_new["DATE"] = pd.nan
 
         if "TIME" in prev_cols and "TIME" not in df_new.columns:
             if "DATETIME" in df_new.columns:
                 df_new["TIME"] = df_new["DATETIME"].dt.strftime("%H:%M:%S")
             else:
-                df_new["TIME"] = np.nan
+                df_new["TIME"] = pd.nan
 
         # Ensure all columns prev expects exist (fill missing with NaN)
         for col in prev_cols:
             if col not in df_new.columns:
-                df_new[col] = np.nan
+                df_new[col] = pd.nan
 
         # Keep only prev columns and in the same order
         df_new = df_new[prev_cols]
@@ -332,14 +343,7 @@ else:
     print("No Alarms Detected")
     
 alarm_df = alarm_df[columns_to_keep]
-alarm_df = alarm_df[alarm_df['SERIAL'].isin([
-    '4GN00100', '4GN00101', '4GN00102', '4GN00103', '4GN00104', '4GN00105',
-    '4GN00106', '4GN00107', '4GN00108', '4GN00109', '4GN00110',
-    '4GV00101', '4GV00103', '4GV00104', '4GV00106', '4GV00107', '4GV00108',
-    '4GV00110', '4GV00111', '4GV00112', '4GV00113', '4GV00114', '4GV00115',
-    '4GV00116', '4GV00117', '4GV00118',
-    '4GW00800', '4GW00802', '4GW00805'
-])]
+alarm_df = alarm_df[alarm_df['SERIAL'].isin(serials_to_write)]
 df = df.drop(columns=['time_diff'])
 print(df.iloc[:, :8])
 print("\n======================================ALARMS======================================\n")
@@ -421,14 +425,7 @@ columns_live_to_keep = [
 # Export CSV for the live view
 # ------------------------------------------------
 export_df = df[columns_live_to_keep]
-export_df = export_df[export_df['SERIAL'].isin([
-    '4GN00100','4GN00101','4GN00102','4GN00103','4GN00104','4GN00105',
-    '4GN00106','4GN00107','4GN00108','4GN00109','4GN00110',
-    '4GV00101','4GV00103','4GV00104','4GV00106','4GV00107','4GV00108',
-    '4GV00110','4GV00111','4GV00112','4GV00113','4GV00114','4GV00115',
-    '4GV00116','4GV00117','4GV00118',
-    '4GW00800','4GW00802','4GW00805'
-])]
+export_df = export_df[export_df['SERIAL'].isin(serials_to_write)]
 export_df.to_csv(
     r"C:\inetpub\wwwroot\Platform\NMS_LIVEVIEW.csv",
     sep='$', encoding='utf-8', index=False, header=True
@@ -507,5 +504,7 @@ dtype_map = {
 # ------------------------------------------------
 # Safe SQL write (replaces df.to_sql)
 # ------------------------------------------------
-safe_to_sql(df, 'LiveSheet$', engine, if_exists='replace', dtype=dtype_map)
+df_sql = df[df['SERIAL'].isin(serials_to_write)].copy()
+safe_to_sql(df_sql, 'LiveSheet$', engine, if_exists='replace', dtype=dtype_map)
+#safe_to_sql(df, 'LiveSheet$', engine, if_exists='replace', dtype=dtype_map)
 print("\n IMPORT IS DONE \n")
