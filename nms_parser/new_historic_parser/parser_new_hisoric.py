@@ -1,12 +1,31 @@
 import os
+import shutil
+from datetime import datetime
+
 import pandas as pd
+import pytz
+import pyodbc
+import urllib.parse
+from tzlocal import get_localzone
 from sqlalchemy import create_engine
 from sqlalchemy.types import Float, DateTime, NVARCHAR, Date, Time
-import urllib
-from datetime import datetime
-import pytz, pyodbc
-from tzlocal import get_localzone
-import shutil
+
+# =========================
+# Deployment configuration
+# =========================
+HISTORIC_SOURCE_ROOT = r"C:/TRISKELION_LOG_DATA"
+IMPORTED_DIR = os.path.join(HISTORIC_SOURCE_ROOT, "IMPORTED")
+PROBLEMATIC_DIR = os.path.join(HISTORIC_SOURCE_ROOT, "PROBLEMATIC")
+FULL_HISTORIC_EXPORT_PATH = r"C:\inetpub\wwwroot\Platform\NMS_FULL_HISTORIC_VIEW.csv"
+
+SQL_DRIVER = "SQL Server Native Client 11.0"
+SQL_SERVER = r"win-45ntjeb05tt\sqlexpress"
+SQL_DATABASE = "3skelion"
+SQL_USERNAME = "admin"
+SQL_PASSWORD = "fasmetrics"
+
+os.makedirs(IMPORTED_DIR, exist_ok=True)
+os.makedirs(PROBLEMATIC_DIR, exist_ok=True)
 
 def nullify_snr_if_rsrp_missing(df, rsrp_col, snr_col):
     if rsrp_col in df.columns and snr_col in df.columns:
@@ -16,14 +35,16 @@ def nullify_snr_if_rsrp_missing(df, rsrp_col, snr_col):
 
 def csv_to_database(csv_path, engine):
     # reads the csv file on the specified path of the arguement if error continues to the next
-    df = pd.read_csv(csv_path, delimiter='$', parse_dates=['DATE'])
+    df = pd.read_csv(csv_path, delimiter='$')
+    if 'DATE' not in df.columns:
+        raise ValueError(f"Missing DATE column in file: {csv_path}")
+
     df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
 
     # Identify columns containing 'Unnamed'
     unnamed_columns = df.filter(like='Unnamed: ').columns
-    # delete all columns containing 'Unnamed'
-    for column in unnamed_columns:
-        del df[column]
+    if len(unnamed_columns) > 0:
+        df = df.drop(columns=list(unnamed_columns))
         
     df = parse_dataframe_for_importing(df)
 
@@ -217,16 +238,17 @@ def parse_dataframe_for_importing(df):
         # Filter out rows where 'NAME' column equals 0 and BLANK DATE and TIME Columns
         # df = df.dropna(subset=['DATE'])
         # df = df.dropna(subset=['TIME'])
-        df.head()
         
-        df = df.dropna(subset=['SERIAL'])
+        df['SERIAL'] = df['SERIAL'].astype(str).str.strip()
+        df = df[df['SERIAL'] != '']
+        df = df[df['SERIAL'].str.lower() != 'nan']
 
         # Check If LAT,LOT is 0. If yes, replace zero datetime with current Datetime
         if 0.0 in df['LATITUDE'].values:
             indices = df.index[df['LATITUDE'] == 0.0].tolist()
             for index in indices:
                 current_time = datetime.now(pytz.utc)
-                formatted_time = current_time.strftime("%m-%d-%Y %H:%M:%S")
+                formatted_time = current_time.strftime("%d-%m-%Y %H:%M:%S")
                 date_component, time_component = formatted_time.split()
                 df.at[index, 'DATE'] = date_component
                 df.at[index, 'TIME'] = time_component
@@ -234,7 +256,7 @@ def parse_dataframe_for_importing(df):
                 df.at[index, 'HEADING'] = 0
                 df.at[index, 'SPEED'] = 0
         # First , we convert the column to datetime type and then isolate date
-        df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, format='%d-%m-%Y')
+        df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, format='%d-%m-%Y', errors='coerce')
         df['DATE'] = df['DATE'].dt.date
         
         if (df['DATE'] > datetime.today().date()).any() or df['DATE'].isnull().any():
@@ -243,8 +265,12 @@ def parse_dataframe_for_importing(df):
             return pd.DataFrame()                           # returns empty Dataframe
 
         # First , we convert the column to datetime type and then isolate time
-        df['TIME'] = pd.to_datetime(df['TIME'], format='%H:%M:%S')
+        df['TIME'] = pd.to_datetime(df['TIME'], format='%H:%M:%S', errors='coerce')
         df['TIME'] = df['TIME'].dt.time
+
+        if df['TIME'].isnull().any():
+            print("Invalid TIME values detected")
+            return pd.DataFrame()
         # Also we keep a datetime columnm with the 2 individual columns combined
         df['DATETIME'] = pd.to_datetime(df['DATE'].astype(str) + ' ' + df['TIME'].astype(str))
 
@@ -279,11 +305,15 @@ def parse_dataframe_for_importing(df):
         nullify_snr_if_rsrp_missing(df, 'BESTS.RSRP', 'BESTS.SNR')
             
         # Extract the last two characters, append '0x' to each, then convert to decimal
+        df['BESTS.CID'] = df['BESTS.CID'].fillna('').astype(str).str.strip()
         hex_sec = '0x' + df['BESTS.CID'].str[-2:]
-
-        # Convert the hexadecimal string to decimal for each entry in the Series
-        dec_sec = hex_sec.apply(lambda x: int(x, 16))
-        df['SECTORID'] = dec_sec
+        # Convert the last two hex digits of BESTS.CID into SECTORID and reject malformed CID values clearly.
+        try:
+            dec_sec = hex_sec.apply(lambda x: int(x, 16))
+            df['SECTORID'] = dec_sec
+        except Exception as e:
+            print(f"Invalid BESTS.CID values detected: {e}")
+            return pd.DataFrame()
             
         return df
 
@@ -294,21 +324,20 @@ def parse_dataframe_for_importing(df):
 
 def full_historic_export():
 
-    # Connection parameters
-    server = 'win-45ntjeb05tt\sqlexpress'  # e.g., 'localhost' or '192.168.1.100\SQLEXPRESS' *** WHEN SERVER IS HOSTED EXTERNALLY, REPLACE SERVER NAME WITH IP ADDRESS ***
-    database = '3skelion'
-    username = 'admin'
-    password = 'fasmetrics'
     table = 'HistoricLast15Days'
 
-    # Create connection string
-    conn_str = f'DRIVER={{SQL Server Native Client 11.0}};SERVER={server};DATABASE={database};UID={username};PWD={password}'
+    conn_str = (
+        f"DRIVER={{{SQL_DRIVER}}};"
+        f"SERVER={SQL_SERVER};"
+        f"DATABASE={SQL_DATABASE};"
+        f"UID={SQL_USERNAME};PWD={SQL_PASSWORD}"
+    )
 
     # Connect and run query
     try:
         with pyodbc.connect(conn_str) as conn:
             df = pd.read_sql_query(f'SELECT [SERIAL],[NAME],[DATE],[TIME],[LATITUDE],[LONGITUDE],[BESTS.SECT#],[BESTS.EARFCN],[BESTS.CID_dec],[BESTS_NODEB_dec],[BESTS.PCI],[BESTS.RSRP],[BESTS.RSRQ],[BESTS.SNR],[S0.EARFCN],[S0.CID_dec],[S0.PCI],[S0.RSRP],[S0.RSRQ],[SECT0.SNR],[S1.EARFCN],[S1.CID_dec],[S1.PCI],[S1.RSRP],[S1.RSRQ],[SECT1.SNR],[S2.EARFCN],[S2.CID_dec],[S2.PCI],[S2.RSRP],[S2.RSRQ],[SECT2.SNR],[S3.EARFCN],[S3.CID_dec],[S3.PCI],[S3.RSRP],[S3.RSRQ],[SECT3.SNR],[BESTS.TEMP.] FROM {table}', conn)
-            df.to_csv("C:\\inetpub\\wwwroot\\Platform\\NMS_FULL_HISTORIC_VIEW.csv", index=False)
+            df.to_csv(FULL_HISTORIC_EXPORT_PATH, index=False)
             print("Data written to output.csv")
 
     except Exception as e:
@@ -317,11 +346,16 @@ def full_historic_export():
 
 # ------------------------ MAIN ------------------------
 # creates the engine on the specified path
-params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};SERVER=win-45ntjeb05tt\sqlexpress;DATABASE=3skelion;UID=admin;PWD=fasmetrics")
+params = urllib.parse.quote_plus(
+    f"DRIVER={{{SQL_DRIVER}}};"
+    f"SERVER={SQL_SERVER};"
+    f"DATABASE={SQL_DATABASE};"
+    f"UID={SQL_USERNAME};PWD={SQL_PASSWORD}"
+)
 engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
 
 # traverse all the files in the subdirecories
-for root, dirs, files in os.walk("C:/TRISKELION_LOG_DATA/", topdown=False):
+for root, dirs, files in os.walk(HISTORIC_SOURCE_ROOT, topdown=False):
     # Skip the IMPORTED and PROBLEMTACIc and FAS directories and their contents
     if "IMPORTED" in root or "PROBLEMATIC" in root or "FAS" in root :
         continue
@@ -339,15 +373,15 @@ for root, dirs, files in os.walk("C:/TRISKELION_LOG_DATA/", topdown=False):
                 result = csv_to_database(path, engine)
                 if result is True:
                     # moves the csvs to the imported folder if imported correctly
-                    move = "C:/TRISKELION_LOG_DATA/IMPORTED/" + name
+                    move = IMPORTED_DIR + name
                     shutil.move(path, move)
                 else:
                     # moves the csvs to the imported folder if imported correctly
-                    move = "C:/TRISKELION_LOG_DATA/PROBLEMATIC/" + name
+                    move = PROBLEMATIC_DIR + name
                     shutil.move(path, move)
             except Exception as e:
                 # moves the csvs to the imported folder if imported correctly
-                move = "C:/TRISKELION_LOG_DATA/PROBLEMATIC/" + name
+                move = PROBLEMATIC_DIR + name
                 shutil.move(path, move)
                 continue
 full_historic_export()

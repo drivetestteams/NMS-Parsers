@@ -1,11 +1,12 @@
 import pandas as pd
 import pytz
+import time
+import urllib.parse
 from tzlocal import get_localzone
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.types import Float, DateTime, NVARCHAR, Date, Time
-import urllib
 from datetime import datetime, timedelta
-from ast import literal_eval
 #from serials_config import serials_to_write
 
 serials_to_write = ['4GW00800','4GV00110','4GV00107',
@@ -28,13 +29,32 @@ def is_valid_date(d):
 
 print("\n\n===RUNNING: 4SKELION LIVE PARSER ")
 
-csv_path = "C:\\Program Files (x86)\\FasmetricsSoftware\\APP TELEMETRY CLIENT SERVICE\\Telemetry.csv"
-dateparse = lambda x: [datetime.strptime(d, '%m/%d/%Y').date() for d in x]
-df = pd.read_csv(csv_path, delimiter='$', parse_dates=['DATE'])
-try:
-    df = df.drop(columns=['Unnamed: 170'])  # In case of appearance in the CSV
-except:
-    print("No column Unnamed was found")
+# =========================
+# Deployment configuration
+# =========================
+# Central deployment paths for telemetry input, prev.csv cache, and platform exports.
+# Keeping these paths together makes client-side changes much easier.
+
+TELEMETRY_CSV_PATH = r"C:\Program Files (x86)\FasmetricsSoftware\APP TELEMETRY CLIENT SERVICE\Telemetry.csv"
+PREV_CSV_PATH = r"C:\Program Files (x86)\FasmetricsSoftware\APP TELEMETRY CLIENT SERVICE\prev_csv\prev.csv"
+ALARMS_EXPORT_PATH = r"C:\inetpub\wwwroot\Platform\NMS_ALARMS.csv"
+LIVEVIEW_EXPORT_PATH = r"C:\inetpub\wwwroot\Platform\NMS_LIVEVIEW.csv"
+
+# Read telemetry CSV
+df = pd.read_csv(TELEMETRY_CSV_PATH, delimiter='$')
+
+# csv_path = "C:\\Program Files (x86)\\FasmetricsSoftware\\APP TELEMETRY CLIENT SERVICE\\Telemetry.csv"
+# dateparse = lambda x: [datetime.strptime(d, '%m/%d/%Y').date() for d in x]
+# df = pd.read_csv(csv_path, delimiter='$', parse_dates=['DATE'])
+
+
+# Some telemetry exports may contain an extra unnamed trailing column.
+# Remove it only if it actually exists.
+if 'Unnamed: 170' in df.columns:
+    df = df.drop(columns=['Unnamed: 170'])  # Remove accidental extra CSV column if present
+else:
+    print("Column 'Unnamed: 170' was not found")
+
 df['DATETIME'] = None                       # Create new column DATETIME 
 df.head()                                   # Print headers
 
@@ -44,8 +64,11 @@ df = df.dropna(subset=['TIME'])
 df = df[df['NAME'] != 0]
 df = df[df['NAME'] != 'Ship name HERE']
 df = df[df['NAME'] != 'DEMO ROTATING ANTENNA']
+
 # Filter out rows where SERIAL where length != 8
+df['SERIAL'] = df['SERIAL'].astype(str).str.strip()
 df = df[df['SERIAL'].str.len() == 8]
+
 
 
 ###################################################__CODE_FOR_REFRESH_PREV_WITH_LAST_VALID__#####################################################################
@@ -55,9 +78,12 @@ def refresh_prev_with_last_valid(df, copy_datetime_on_scan_change=True):
     If copy_datetime_on_scan_change is True, when a SERIAL exists in prev but SCAN# differs,
     copy the current SCAN#, DATETIME (and DATE/TIME text) from telemetry into prev.
     """
-    csv_path1 = r"C:\\Program Files (x86)\\APP TELEMETRY\\prev_csv\\prev.csv"
+    csv_path1 = PREV_CSV_PATH
 
     # --- Load prev and minimal cleanup ---
+    if not pd.io.common.file_exists(csv_path1):
+        raise FileNotFoundError(f"prev.csv was not found at: {csv_path1}")
+
     df_prev = pd.read_csv(csv_path1, delimiter="$")
 
     # Keep only rows that have DATE and TIME (so we can build DATETIME reliably)
@@ -226,16 +252,24 @@ df = df[df['SERIAL'] != '4GC00146']
 # df['DATE'] = pd.to_datetime(df['DATE'])
 # df['DATE'] = df['DATE'].dt.date
 
-df = df[df['DATE'].apply(is_valid_date)]  # remove rows with bad dates
-invalid_dates = df[~df['DATE'].apply(is_valid_date)]
+invalid_dates = df[~df['DATE'].astype(str).apply(is_valid_date)]
 if not invalid_dates.empty:
     print("Found invalid DATE entries:")
-    print(invalid_dates['DATE'].unique())
-df['DATE'] = pd.to_datetime(df['DATE'], format="%m/%d/%Y")  # now it's safe to parse
+    print(invalid_dates['DATE'].astype(str).unique())
+
+df = df[df['DATE'].astype(str).apply(is_valid_date)]  # keep only valid dates
+df['DATE'] = pd.to_datetime(df['DATE'], format="%m/%d/%Y")
 df['DATE'] = df['DATE'].dt.date
 
 # First , we convert the column to datetime type and then isolate time
-df['TIME'] = pd.to_datetime(df['TIME'],format="%H:%M:%S")
+# Parse TIME safely and drop malformed rows instead of crashing the entire live parser.
+df['TIME'] = pd.to_datetime(df['TIME'], format="%H:%M:%S", errors='coerce')
+invalid_times = df[df['TIME'].isna()]
+if not invalid_times.empty:
+    print("Found invalid TIME entries:")
+    print(invalid_times[['SERIAL', 'TIME']].head())
+
+df = df.dropna(subset=['TIME'])
 df['TIME'] = df['TIME'].dt.time
 # Also we keep a datetime columnm with the 2 individual columns combined
 df['DATETIME'] = pd.to_datetime(df['DATE'].astype(str) + ' ' + df['TIME'].astype(str))
@@ -259,7 +293,8 @@ if column_name in df.columns:
 df['BESTS.RSRP'] = pd.to_numeric(df['BESTS.RSRP'], errors='coerce')
 
 # Extract the last two characters, append '0x' to each, then convert to decimal
-cid = df['BESTS.CID'].astype(str)
+# Normalize BESTS.CID before extracting the last two hexadecimal characters for SECTORID.
+cid = df['BESTS.CID'].fillna('').astype(str).str.strip()
 last2 = cid.str[-2:].where(cid.str.len() >= 2)
 
 def _hex_to_int(s):
@@ -271,29 +306,6 @@ def _hex_to_int(s):
     return int("0x" + s,16)
 
 df['SECTORID'] = last2.map(_hex_to_int)
-
-# df['S0.RSRP'] = df['S0.RSRP'].astype(int)
-
-# ---------------------------------------------ERROR HANDLING--------------------------------------------------------------
-# Convert 'DATE' column to datetime and handle errors
-# try:
-#     df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')  # Convert invalid dates to NaT
-#     df['DATE'] = df['DATE'].dt.date
-# except Exception as e:
-#     print(f"Error converting 'DATE' column: {e}")
-
-# # Convert 'TIME' column to datetime and handle errors
-# try:
-#     df['TIME'] = pd.to_datetime(df['TIME'], format="%H:%M:%S", errors='coerce').dt.time  # Convert invalid times to NaT
-# except Exception as e:
-#     print(f"Error converting 'TIME' column: {e}")
-
-# # Combine 'DATE' and 'TIME' into a new 'DATETIME' column, only if neither is NaT
-# df['DATETIME'] = df.apply(
-#     lambda row: pd.to_datetime(f"{row['DATE']} {row['TIME']}", errors='coerce') if pd.notna(row['DATE']) and pd.notna(row['TIME']) else pd.NaT,
-#     axis=1
-# )
-# ----------------------------------------------------------------------------------------------------------------------------
 
 # ---------------------------------------------ALARM EXPORT--------------------------------------------------------------
 # Get the current datetime
@@ -348,22 +360,14 @@ df = df.drop(columns=['time_diff'])
 print(df.iloc[:, :8])
 print("\n======================================ALARMS======================================\n")
 print(alarm_df.iloc[:, :])
-alarm_df.to_csv("C:\\inetpub\\wwwroot\\Platform\\NMS_ALARMS.csv", sep='$', encoding='utf-8', index=False, header=True)
+alarm_df.to_csv(ALARMS_EXPORT_PATH, sep='$', encoding='utf-8', index=False, header=True)
 # ----------------------------------------------------------------------------------------------------------------------------
 
 # ================================================================
 # Insert Data with correct types into SQL Database (safe + resilient)
+# Retry helper for transient SQL connection errors
 # ================================================================
 
-import urllib.parse
-import time
-from sqlalchemy import create_engine
-from sqlalchemy.exc import OperationalError
-from sqlalchemy.types import NVARCHAR, Float, DateTime, Date, Time
-
-# ------------------------------------------------
-# Retry helper for transient SQL connection errors
-# ------------------------------------------------
 def safe_to_sql(df, table, engine, if_exists='replace', dtype=None, tries=3, delay=3):
     """
     Writes DataFrame to SQL Server with retry.
@@ -391,11 +395,17 @@ def safe_to_sql(df, table, engine, if_exists='replace', dtype=None, tries=3, del
 # ------------------------------------------------
 # Keep SQL Server Native Client 11.0
 # ------------------------------------------------
+SQL_DRIVER = "SQL Server Native Client 11.0"
+SQL_SERVER = r"win-45ntjeb05tt\sqlexpress"
+SQL_DATABASE = "3skelion"
+SQL_USERNAME = "admin"
+SQL_PASSWORD = "fasmetrics"
+
 params = urllib.parse.quote_plus(
-    "DRIVER={SQL Server Native Client 11.0};"
-    "SERVER=win-45ntjeb05tt\\sqlexpress;"
-    "DATABASE=3skelion;"
-    "UID=admin;PWD=fasmetrics;"
+    f"DRIVER={{{SQL_DRIVER}}};"
+    f"SERVER={SQL_SERVER};"
+    f"DATABASE={SQL_DATABASE};"
+    f"UID={SQL_USERNAME};PWD={SQL_PASSWORD};"
     "TrustServerCertificate=Yes;"
 )
 engine = create_engine(
@@ -424,10 +434,15 @@ columns_live_to_keep = [
 # ------------------------------------------------
 # Export CSV for the live view
 # ------------------------------------------------
-export_df = df[columns_live_to_keep]
+available_live_columns = [col for col in columns_live_to_keep if col in df.columns]
+missing_live_columns = [col for col in columns_live_to_keep if col not in df.columns]
+if missing_live_columns:
+    print("Missing live export columns:", missing_live_columns)
+
+export_df = df[available_live_columns]
 export_df = export_df[export_df['SERIAL'].isin(serials_to_write)]
 export_df.to_csv(
-    r"C:\inetpub\wwwroot\Platform\NMS_LIVEVIEW.csv",
+   LIVEVIEW_EXPORT_PATH,
     sep='$', encoding='utf-8', index=False, header=True
 )
 
@@ -504,7 +519,9 @@ dtype_map = {
 # ------------------------------------------------
 # Safe SQL write (replaces df.to_sql)
 # ------------------------------------------------
+
 df_sql = df[df['SERIAL'].isin(serials_to_write)].copy()
+#df_sql = df.copy()
 safe_to_sql(df_sql, 'LiveSheet$', engine, if_exists='replace', dtype=dtype_map)
 #safe_to_sql(df, 'LiveSheet$', engine, if_exists='replace', dtype=dtype_map)
 print("\n IMPORT IS DONE \n")

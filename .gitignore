@@ -2,3 +2,4 @@
 *.env
 *.pyc
 *\log_files
+nms_parser.zip

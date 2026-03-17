@@ -4,21 +4,40 @@
 
 import tkinter as tk
 from tkinter import ttk
-from datetime import datetime, timedelta
-import subprocess
-import threading
 import time
-import os
+import threading
+import subprocess
+from datetime import datetime, timedelta
 import sys
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.message import EmailMessage
-import smtplib
+import os
+# Email-related imports were removed because alert emails are disabled for client deployment.
 
 # Paths to the parser scripts and executables
 # These paths should be set according to your directory structure
 # Note: Ensure that the paths are correct and accessible from the machine running this script
 # You can change these paths to absolute paths if needed, but relative paths are used here for portability
+
+# Base directory of this controller script
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Absolute script paths so execution does not depend on the current working directory
+HISTORIC_SCRIPT = os.path.join(BASE_DIR, "new_historic_parser", "parser_new_hisoric.py")
+LIVE_SCRIPT = os.path.join(BASE_DIR, "new_live_parser", "live_parser.py")
+
+# Telemetry executable path
+TELEMETRY_EXE = r"C:\Program Files (x86)\FasmetricsSoftware\APP TELEMETRY CLIENT SERVICE\TelemetryService.exe"
+
+# Asset path
+ICON_PATH = os.path.join(BASE_DIR, "assets", "FASMETRICS_LOGONLY.ico")
+
+# Log directories
+LOG_BASE_DIR = os.path.join(BASE_DIR, "log_files")
+LOG_OK_DIR = os.path.join(LOG_BASE_DIR, "EXIT_CODE_0")
+LOG_ERR_DIR = os.path.join(LOG_BASE_DIR, "ERROR")
+
+# Ensure log folders exist before any logging happens
+os.makedirs(LOG_OK_DIR, exist_ok=True)
+os.makedirs(LOG_ERR_DIR, exist_ok=True)
 
 FourSkelion_Historic_path = "./new_historic_parser/parser_new_hisoric"  # Path to the new historic parser script
 
@@ -36,15 +55,13 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
         self.root.title("NMS Files Parser")
 
         # Set the window icon
-        self.set_icon("../assets/FASMETRICS_LOGONLY.ico")
+        #self.set_icon("../assets/FASMETRICS_LOGONLY.ico")
+        # Load icon only if it exists, to avoid startup failure in case assets are missing on the client VM.
+        if os.path.exists(ICON_PATH):
+            self.set_icon(ICON_PATH)
         
         # Initialize Telemetry.exe
         self.telemetry_process = self.start_telemetry()
-        
-        self.script_mail_counter1 = 0
-        self.script_mail_counter2 = 0
-        self.script_mail_counter3 = 0
-        self.script_mail_counter4 = 0
         
         # Initialize Auto_Sync.exe
         self.auto_sync_process = self.start_auto_sync()
@@ -63,14 +80,18 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
         # Schedule program restart every 4 hours (4 * 60 * 60 * 1000 milliseconds)
         self.root.after(4 * 60 * 60 * 1000, self.restart_program)
 
-    # This function monitors the thread and kills the program if it exceeds the timeout    
-    def kill_self_after_timeout(self, thread, timeout=90000): # 90 seconds typically
+    # This function monitors the thread and kills the program if it exceeds the timeout   
+    # # Watchdog for worker threads:
+    # if a parser thread hangs for too long, terminate the controller process
+    # so the external BAT / Task Scheduler mechanism can restart it cleanly. 
+    def kill_self_after_timeout(self, thread, timeout=900):
         def monitor():
             time.sleep(timeout)
             if thread.is_alive():
-                print(f"[Watchdog] Thread '{thread.name}' still alive after {timeout} sec. Exiting...")
-                sys.exit(1)
-            threading.Thread(target=monitor, daemon=True).start()
+                print(f"Timeout reached after {timeout} seconds. Controller will exit for external restart.")
+                os._exit(1)
+
+        threading.Thread(target=monitor, daemon=True).start()
             
     # This function restarts the program by terminating all subprocesses and launching a new instance of the script
     # It also ensures that the GUI is closed properly before restarting                
@@ -132,30 +153,34 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
         except Exception as e:
             print(f"Error starting Auto_sync.exe: {e}")
             return None
-        
-    # This function handles the closing of the application
-    # It ensures that both Telemetry.exe and Auto_Sync.exe processes are terminated properly
-    def on_closing(self):
-        # Close Telemetry.exe if it is running
+
+    def close_all_opened_processes(self):
         if self.telemetry_process:
             try:
                 self.telemetry_process.terminate()
-                self.telemetry_process.wait()
+                self.telemetry_process.wait(timeout=10)
                 print(f"Closed Telemetry.exe with PID {self.telemetry_process.pid}")
             except Exception as e:
                 print(f"Error closing Telemetry.exe: {e}")
-             
-        # Close Auto_Sync.exe if it is running   
+            finally:
+                self.telemetry_process = None
+
         if self.auto_sync_process:
             try:
                 self.auto_sync_process.terminate()
-                self.auto_sync_process.wait()
+                self.auto_sync_process.wait(timeout=10)
                 print(f"Closed Auto_Sync.exe with PID {self.auto_sync_process.pid}")
             except Exception as e:
                 print(f"Error closing Auto_Sync.exe: {e}")
-                
+            finally:
+                self.auto_sync_process = None
+
+    # This function handles the closing of the application
+    # It ensures that both Telemetry.exe and Auto_Sync.exe processes are terminated properly
+    def on_closing(self):
+        self.close_all_opened_processes()
         self.root.destroy()
-        print("Application closed successfully.")
+        os._exit(0)
 
     # This function restarts the Telemetry.exe process
     # It first terminates the existing process and then starts a new instance
@@ -224,19 +249,33 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
         self.run_status_label53 = ttk.Label(frame4, text="Next Telemetry Restart: Not Scheduled", style="Small.TLabel")
         self.run_status_label53.pack()
 
+        # Close EVERYTHING
+        close_all_button = ttk.Button(
+            frame3,
+            text="Close Everything",
+            command=self.on_closing,
+            style="Large.TButton"
+        )
+        close_all_button.pack(pady=10)
+
+
     # This function runs a script in a separate thread
     # It handles the script name and starts the thread for execution
     # It also sets a timeout for the thread to ensure it does not run indefinitely
+    # Run each managed process in a background thread so the GUI remains responsive.
+    # A watchdog thread monitors execution time in case a parser hangs.
     def run_script_in_thread(self, script_name):
-        try:
-            print(script_name)
-            # Create a thread for running the script
-            thread = threading.Thread(target=self.run_script, args=(script_name,))
-            thread.start()
-            self.kill_self_after_timeout(thread, timeout=90000)    # 90 seconds typical timeout for each thread running the script
-        except Exception as e:
-            print(f"Error starting thread for {script_name}: {e}")
+        thread = threading.Thread(
+            target=self.run_script,
+            args=(script_name,),
+            daemon=True
+        )
+        thread.start()
+        self.kill_self_after_timeout(thread, timeout=900)
     
+    def update_label_safe(self, label, text):
+        self.root.after(0, lambda: label.config(text=text))
+
     # This function runs the specified script
     # It uses subprocess to execute the script and captures its output
     # It also handles the exit code and logs the output to files
@@ -245,37 +284,54 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
            
             # if script name is a method run it  
             if script_name == "Restart_telemetry":
-                self.restart_telemetry() 
+                restart_code = self.restart_telemetry()
+                class DummyResult:
+                    def __init__(self, returncode, stdout="", stderr=""):
+                        self.returncode = returncode
+                        self.stdout = stdout
+                        self.stderr = stderr
+
+                result = DummyResult(restart_code, stdout="Telemetry restarted successfully.", stderr="")
             # Run the external script
             else:
                 result = subprocess.run(['python', f'{script_name}.py'], capture_output=True, text=True)
+                #That is safer on the client VM, especially if: 1.multiple Python versions exist // 2.PATH is not configured // 3.Task Scheduler launches under a different environment
+                #result = subprocess.run([sys.executable, f'{script_name}.py'], capture_output=True, text=True)
                 
-                # Based on the exit code print the output/error and save it in the correct logs
+                # Save one timestamped log file per execution, including the executed path,
+                # exit code, and captured stdout/stderr, so troubleshooting is easier on the client VM.
+                # Based on the exit code, print the output/error and save it in the correct log folder.
+                current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                print(f"The return code is: {result.returncode}")
                 if result.returncode == 0:
-                    path = "../log_files/EXIT_CODE_0/"
+                    path = LOG_OK_DIR
                     print(result.stdout)
-                    current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") # Format the current date and time
-                    # Create a file name with the current date and time
-                    file_name = path  +f"{current_datetime}.txt"
 
-                    # Open the file in write mode ('w')
-                    with open(file_name, 'w') as file:
-                        # Write the string to the file
-                        file.write(result.stdout + '\n')
+                    safe_script_name = os.path.basename(script_name).replace(' ', '_').replace('.', '_')
+                    file_name = os.path.join(path, f"{safe_script_name}_{current_datetime}.txt")
+
+                    with open(file_name, 'w', encoding='utf-8') as file:
+                        #file.write(f"EXECUTED PATH: {script_path}\n")
+                        file.write(f"EXIT CODE: {result.returncode}\n")
+                        file.write("----------STDOUT----------\n")
+                        file.write(result.stdout if result.stdout else "(no stdout)\n")
+
                 else:
-                    path = "../log_files/ERROR/"
+                    path = LOG_ERR_DIR
                     print(result.stdout)
                     print("_______________________________________")
                     print(result.stderr)
-                    current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") # Format the current date and time
-                    # Create a file name with the current date and time
-                    file_name = path + f"{current_datetime}.txt"
 
-                    # Open the file in write mode ('w')
-                    with open(file_name, 'w') as file:
-                        # Write the string to the file
-                        file.write("----------ERROR MESSAGE:\n" + result.stderr)
-                        file.write(result.stdout)
+                    safe_script_name = os.path.basename(script_name).replace(' ', '_').replace('.', '_')
+                    file_name = os.path.join(path, f"{safe_script_name}_{current_datetime}.txt")
+                    print(f"The return code is: {result.returncode}")
+                    with open(file_name, 'w', encoding='utf-8') as file:
+                        #file.write(f"EXECUTED PATH: {script_path}\n")
+                        file.write(f"EXIT CODE: {result.returncode}\n")
+                        file.write("----------STDERR----------\n")
+                        file.write(result.stderr if result.stderr else "(no stderr)\n")
+                        file.write("\n----------STDOUT----------\n")
+                        file.write(result.stdout if result.stdout else "(no stdout)\n")
 
             # Update last run time
             current_time = datetime.now()
@@ -283,32 +339,40 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
             # Update UI labels and schedule next run
                                 
             if script_name == FourSkelion_Historic_path:
-                self.run_status_label31.config(text=f"Last Run: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                self.exit_code_label31.config(text=f"Exit Code: {result.returncode}")
+                #self.run_status_label31.config(text=f"Last Run: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                #self.exit_code_label31.config(text=f"Exit Code: {result.returncode}")
+
+                self.update_label_safe(self.run_status_label31, f"Last Run: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                self.update_label_safe(self.exit_code_label31, f"Exit Code: {result.returncode}")
+
                 next_run_time = current_time + timedelta(minutes=180) # Schedule next run after 3 hours
                 self.schedule_next_run_in_thread(script_name, self.run_status_label32, next_run_time) # Schedule next run in a separate thread
                 # if this an error happens for the firs time
-                if result.returncode != 0:
-                    self.script_mail_counter3 += 1
-                    if self.script_mail_counter3 == 1:
-                        # send mail that there was an error with the parsers 
-                        title = f"Error with: {script_name}"
-                        body = f"There was an error with {script_name}\n"
-                        self.email_report(title , body)  
+                # if result.returncode != 0:
+                #     self.script_mail_counter3 += 1
+                #     if self.script_mail_counter3 == 1:
+                #         # send mail that there was an error with the parsers 
+                #         title = f"Error with: {script_name}"
+                #         body = f"There was an error with {script_name}\n"
+                #         self.email_report(title , body)  
                 
             elif script_name == FourSkelion_Live_path:
-                self.run_status_label41.config(text=f"Last Run: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                self.exit_code_label41.config(text=f"Exit Code: {result.returncode}")
+                #self.run_status_label41.config(text=f"Last Run: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                #self.exit_code_label41.config(text=f"Exit Code: {result.returncode}")
+
+                self.update_label_safe(self.run_status_label41, f"Last Run: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                self.update_label_safe(self.exit_code_label41, f"Exit Code: {result.returncode}")
+
                 next_run_time = current_time + timedelta(minutes=2) # Schedule next run after 2 minutes
                 self.schedule_next_run_in_thread(script_name, self.run_status_label42, next_run_time) # Schedule next run in a separate thread
                 # if this an error happens for the firs time
-                if result.returncode != 0:
-                    self.script_mail_counter4 += 1
-                    if self.script_mail_counter4 == 1:
-                        # send mail that there was an error with the parsers 
-                        title = f"Error with: {script_name}"
-                        body = f"There was an error with {script_name}\n"
-                        self.email_report(title , body)  
+                # if result.returncode != 0:
+                #     self.script_mail_counter4 += 1
+                #     if self.script_mail_counter4 == 1:
+                #         # send mail that there was an error with the parsers 
+                #         title = f"Error with: {script_name}"
+                #         body = f"There was an error with {script_name}\n"
+                #         self.email_report(title , body)  
                 
                 
             elif script_name == "Restart_telemetry":
@@ -327,43 +391,20 @@ class SimpleSchedulerApp: # Override the class "SimpleSchedulerApp" with these f
         except Exception as e:
             print(f"Error starting scheduling thread for {script_name}: {e}")
 
+    # Update the GUI with the next scheduled execution time and register the next run.
+    # Label updates are routed through the Tkinter main thread for thread safety.
     # This function schedules the next run of a script
     # It updates the label with the next run time and sets a delay for the next execution
     def schedule_next_run(self, script_name, label, next_run_time):
+        delay = max(0, int((next_run_time - datetime.now()).total_seconds() * 1000))
+
         if label == self.run_status_label53:
-            label.config(text=f"Next Telemetry Restart: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            delay = int((next_run_time - datetime.now()).total_seconds() * 1000)  # Convert timedelta to milliseconds
-            self.root.after(delay, lambda: self.run_script(script_name))
+            self.update_label_safe(label,f"Next Telemetry Restart: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
-            label.config(text=f"Next Run: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            delay = int((next_run_time - datetime.now()).total_seconds() * 1000)  # Convert timedelta to milliseconds
-            self.root.after(delay, lambda: self.run_script(script_name))
+            self.update_label_safe(label,f"Next Run: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # This function sends an email report with the specified title and content
-    # It uses the smtplib library to connect to an SMTP server and send the email
-    def email_report(self, title, content):
-        from_mail = 'drivetestteams@fasmetrics.com'
-        to_mail = 'ioannis.astithas@fasmetrics.com,konstantinos.theodoropoulos@fasmetrics.com,dimitris.vasilas@fasmetrics.com,konstantinos.georgiafentis@fasmetrics.com'
-        #server_user = '3skelion.fasmetrics@gmail.com'
-        #server_user = 'rno@fasmetrics.com'
-        server_user = 'drivetestteams@fasmetrics.com'
-        #server_pass = '3skelion'
-        #server_pass = 'rnaoteam1!'
-        server_pass = 'drivetest1!'
-        dproc = 'RGIS_DatParser.exe'
+        self.root.after(delay, lambda: self.run_script_in_thread(script_name))
 
-        #Connect to gmail account and send mail notification
-        msg = EmailMessage()
-        msg.set_content(content)
-        msg['From'] = from_mail
-        msg['To'] = to_mail
-        msg['Subject'] = title
-        #server = smtplib.SMTP('smtp.gmail.com', 587)
-        server = smtplib.SMTP(host='smtp-mail.outlook.com', port=587)
-        server.starttls()
-        server.login(server_user, server_pass)
-        server.send_message(msg)
-        server.quit()
 
 if __name__ == "__main__":
     root = tk.Tk()
