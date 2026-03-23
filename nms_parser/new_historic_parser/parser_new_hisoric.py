@@ -32,6 +32,12 @@ def nullify_snr_if_rsrp_missing(df, rsrp_col, snr_col):
         df.loc[df[rsrp_col] == -150, rsrp_col] = pd.NA
         df.loc[df[rsrp_col].isna(), snr_col] = pd.NA
 
+def build_timestamped_destination(destination_dir, original_name, status_tag):
+    base_name, ext = os.path.splitext(original_name)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    safe_name = f"{base_name}_{status_tag}_{timestamp}{ext}"
+    return os.path.join(destination_dir, safe_name)
+
 
 def csv_to_database(csv_path, engine):
     # reads the csv file on the specified path of the arguement if error continues to the next
@@ -338,7 +344,7 @@ def full_historic_export():
         with pyodbc.connect(conn_str) as conn:
             df = pd.read_sql_query(f'SELECT [SERIAL],[NAME],[DATE],[TIME],[LATITUDE],[LONGITUDE],[BESTS.SECT#],[BESTS.EARFCN],[BESTS.CID_dec],[BESTS_NODEB_dec],[BESTS.PCI],[BESTS.RSRP],[BESTS.RSRQ],[BESTS.SNR],[S0.EARFCN],[S0.CID_dec],[S0.PCI],[S0.RSRP],[S0.RSRQ],[SECT0.SNR],[S1.EARFCN],[S1.CID_dec],[S1.PCI],[S1.RSRP],[S1.RSRQ],[SECT1.SNR],[S2.EARFCN],[S2.CID_dec],[S2.PCI],[S2.RSRP],[S2.RSRQ],[SECT2.SNR],[S3.EARFCN],[S3.CID_dec],[S3.PCI],[S3.RSRP],[S3.RSRQ],[SECT3.SNR],[BESTS.TEMP.] FROM {table}', conn)
             df.to_csv(FULL_HISTORIC_EXPORT_PATH, index=False)
-            print("Data written to output.csv")
+            print(f"Data written to: {FULL_HISTORIC_EXPORT_PATH}")
 
     except Exception as e:
         print("Error:", e)
@@ -372,16 +378,14 @@ for root, dirs, files in os.walk(HISTORIC_SOURCE_ROOT, topdown=False):
                 #imports the csv to database
                 result = csv_to_database(path, engine)
                 if result is True:
-                    # moves the csvs to the imported folder if imported correctly
-                    move = IMPORTED_DIR + name
+                    move = build_timestamped_destination(IMPORTED_DIR, name, "IMPORTED")
                     shutil.move(path, move)
                 else:
-                    # moves the csvs to the imported folder if imported correctly
-                    move = PROBLEMATIC_DIR + name
+                    move = build_timestamped_destination(PROBLEMATIC_DIR, name, "PROBLEMATIC")
                     shutil.move(path, move)
             except Exception as e:
-                # moves the csvs to the imported folder if imported correctly
-                move = PROBLEMATIC_DIR + name
+                print(f"Error while processing file {path}: {e}")
+                move = build_timestamped_destination(PROBLEMATIC_DIR, name, "EXCEPTION")
                 shutil.move(path, move)
                 continue
 full_historic_export()
